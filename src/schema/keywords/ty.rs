@@ -5,7 +5,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum TypeErrorKind {
-    TypeMismatch,
+    TypeMismatch { expected: Type },
     NotInteger,
 }
 
@@ -49,11 +49,10 @@ impl From<&Json> for Type {
 impl JsonSchemaValidator for Type {
     fn validate_json<'schema>(
         &'schema self,
+        key_to_input: &mut Key,
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
-        let key = Key::default();
-
         let error_kind = if let (Type::Integer, Json::Number { fraction, .. }) = (self, input) {
             if fraction.1 == 0 {
                 None
@@ -61,7 +60,9 @@ impl JsonSchemaValidator for Type {
                 Some(TypeErrorKind::NotInteger)
             }
         } else if self != &input.into() {
-            Some(TypeErrorKind::TypeMismatch)
+            Some(TypeErrorKind::TypeMismatch {
+                expected: self.clone(),
+            })
         } else {
             None
         };
@@ -69,7 +70,7 @@ impl JsonSchemaValidator for Type {
         if let Some(type_error) = error_kind {
             annotations.push(
                 TypeError {
-                    key: key.copy_of(),
+                    key: key_to_input.copy_of(),
                     error: type_error,
                     actual: input.into(),
                 }

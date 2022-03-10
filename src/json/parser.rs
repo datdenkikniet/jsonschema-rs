@@ -174,7 +174,7 @@ impl Parser {
 
             let leading_zeros = value
                 .chars()
-                .take_while(|char| char.is_numeric() && char != &'0')
+                .take_while(|char| char.is_numeric() && char == &'0')
                 .count() as u32;
 
             let number = if let Ok(val) = i64::from_str_radix(value, 10) {

@@ -48,6 +48,7 @@ impl<'schema> Into<JsonSchema<'schema>> for LogicApplier<'schema> {
 impl<'me> JsonSchemaValidator for LogicApplier<'me> {
     fn validate_json<'schema>(
         &'schema self,
+        key_to_input: &mut Key,
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
@@ -58,7 +59,7 @@ impl<'me> JsonSchemaValidator for LogicApplier<'me> {
             | LogicApplier::AnyOf(schemas)
             | LogicApplier::OneOf(schemas) => schemas,
             LogicApplier::Not(schema) => {
-                if schema.validate_json(input, annotations) {
+                if schema.validate_json(key_to_input, input, annotations) {
                     annotations.push(
                         LogicError {
                             schema: self.clone().into(),
@@ -77,7 +78,7 @@ impl<'me> JsonSchemaValidator for LogicApplier<'me> {
 
         let mut valid = 0;
         for schema in schemas {
-            if schema.validate_json(input, annotations) {
+            if schema.validate_json(key_to_input, input, annotations) {
                 valid += 1;
             }
         }
@@ -159,57 +160,64 @@ impl<'schema> LogicApplier<'schema> {
 }
 
 #[cfg(test)]
-macro_rules! assert_pretty_print {
-    ($applier: expr, $test: expr, $input: expr) => {
-        let errors = &mut Vec::new();
-        assert!(
-            $applier.validate_json(&$input, errors) == $test,
-            "Failed: {:?} = {:?} not {}",
-            $input,
-            $applier,
-            stringify!($test)
-        )
-    };
-}
+mod tests {
+    use super::LogicApplier;
+    use crate::json::{Json, Key};
+    use crate::schema::JsonSchemaValidator;
 
-macro_rules! test {
-    ($name: ident, $applier: expr, $self_only: ident, $self_and_other: ident, $self_twice: ident, $only_other: ident) => {
-        #[test]
-        fn $name() {
-            let input: Json = "Test".into();
+    macro_rules! assert_pretty_print {
+        ($applier: expr, $test: expr, $input: expr) => {
+            let errors = &mut Vec::new();
+            let key = &mut Key::default();
+            assert!(
+                $applier.validate_json(key, &$input, errors) == $test,
+                "Failed: {:?} = {:?} not {}",
+                $input,
+                $applier,
+                stringify!($test)
+            )
+        };
+    }
 
-            let me = &input.clone().into();
-            let not_me = &"Not present".into();
+    macro_rules! test {
+        ($name: ident, $applier: expr, $self_only: ident, $self_and_other: ident, $self_twice: ident, $only_other: ident) => {
+            #[test]
+            fn $name() {
+                let input: Json = "Test".into();
 
-            let applier = $applier(vec![me]);
-            assert_pretty_print!(applier, $self_only, input);
+                let me = &input.clone().into();
+                let not_me = &"Not present".into();
 
-            let applier = $applier(vec![me, not_me]);
-            assert_pretty_print!(applier, $self_and_other, input);
+                let applier = $applier(vec![me]);
+                assert_pretty_print!(applier, $self_only, input);
 
-            let applier = $applier(vec![me, me]);
-            assert_pretty_print!(applier, $self_twice, input);
+                let applier = $applier(vec![me, not_me]);
+                assert_pretty_print!(applier, $self_and_other, input);
 
-            let applier = $applier(vec![not_me]);
-            assert_pretty_print!(applier, $only_other, input);
-        }
-    };
-}
+                let applier = $applier(vec![me, me]);
+                assert_pretty_print!(applier, $self_twice, input);
 
-test!(all_of, LogicApplier::AllOf, true, false, true, false);
-test!(any_of, LogicApplier::AnyOf, true, true, true, false);
-test!(one_of, LogicApplier::OneOf, true, true, false, false);
+                let applier = $applier(vec![not_me]);
+                assert_pretty_print!(applier, $only_other, input);
+            }
+        };
+    }
 
-#[test]
-fn not() {
-    let input: Json = "Test".into();
+    test!(all_of, LogicApplier::AllOf, true, false, true, false);
+    test!(any_of, LogicApplier::AnyOf, true, true, true, false);
+    test!(one_of, LogicApplier::OneOf, true, true, false, false);
 
-    let me = &input.clone().into();
-    let not_me = &"Not present".into();
+    #[test]
+    fn not() {
+        let input: Json = "Test".into();
 
-    let applier = LogicApplier::Not(me);
-    assert_pretty_print!(applier, false, input);
+        let me = &input.clone().into();
+        let not_me = &"Not present".into();
 
-    let applier = LogicApplier::Not(not_me);
-    assert_pretty_print!(applier, true, input);
+        let applier = LogicApplier::Not(me);
+        assert_pretty_print!(applier, false, input);
+
+        let applier = LogicApplier::Not(not_me);
+        assert_pretty_print!(applier, true, input);
+    }
 }

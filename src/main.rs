@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read, time::Instant};
 
-use jsonschema::json::{Key, KeyPart, Lexer, Parser};
+use jsonschema::json::{Lexer, Parser};
 
 fn main() -> Result<(), String> {
     let mut args = std::env::args();
@@ -41,17 +41,7 @@ fn main() -> Result<(), String> {
     let end = Instant::now();
     println!("Lexed in {} ms", (end - start).as_millis());
 
-    println!("{:?}", parsed.is_some());
-
-    println!(
-        "{:?}",
-        parsed.unwrap().get(&mut Key::new(vec![
-            KeyPart::Identifier("features".to_string()),
-            KeyPart::Index(0),
-            KeyPart::Identifier("properties".to_string()),
-            KeyPart::Identifier("BLOCK_NUM".to_string()),
-        ]))
-    );
+    println!("{:?}", parsed);
 
     Ok(())
 }

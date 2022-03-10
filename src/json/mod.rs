@@ -6,8 +6,6 @@ pub use parser::Parser;
 
 use std::collections::HashMap;
 
-use self::{lexer::Token, parser::ParseError};
-
 #[derive(Debug, Clone)]
 pub enum KeyPart {
     Identifier(String),
