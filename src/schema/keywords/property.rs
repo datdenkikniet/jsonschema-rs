@@ -36,7 +36,7 @@ impl<'schema> Into<Annotation<'schema>> for PropertyError<'schema> {
 pub struct Property<'schema> {
     required: bool,
     name: String,
-    schema: &'schema JsonSchema<'schema>,
+    schemas: Vec<&'schema JsonSchema<'schema>>,
 }
 
 impl<'schema> Into<JsonSchema<'schema>> for Property<'schema> {
@@ -72,13 +72,15 @@ impl<'me> JsonSchemaValidator for Property<'me> {
             let input_key = &mut key_to_input.copy_of();
             input_key.push(KeyPart::Identifier(object_key.clone()));
 
-            let success = self
-                .schema
-                .validate_json(input_key, object_value, annotations);
-            if !success {
+            let failures = self
+                .schemas
+                .iter()
+                .filter(|schema| !schema.validate_json(input_key, object_value, annotations))
+                .count();
+            if failures != 0 {
                 annotations.push(
                     PropertyError {
-                        schema: self.schema.clone(),
+                        schema: self.clone().into(),
                         key: input_key.clone(),
                         kind: PropertyErrorKind::Invalid,
                     }
@@ -105,10 +107,10 @@ impl<'me> JsonSchemaValidator for Property<'me> {
 }
 
 impl<'schema> Property<'schema> {
-    pub fn new(name: &str, schema: &'schema JsonSchema<'schema>, required: bool) -> Self {
+    pub fn new(name: &str, schemas: Vec<&'schema JsonSchema<'schema>>, required: bool) -> Self {
         Self {
             name: name.to_string(),
-            schema,
+            schemas,
             required,
         }
     }
@@ -131,12 +133,12 @@ mod tests {
     fn required() {
         let input = &Json::from_string(r#"{"x": "value"}"#).unwrap();
 
-        let ty = JsonSchema::Type(Type::String);
+        let ty = vec![&JsonSchema::Type(Type::String)];
 
         let mut schema = Property {
             required: false,
             name: "x".to_string(),
-            schema: &ty,
+            schemas: ty,
         };
 
         macro_rules! test {
@@ -161,12 +163,12 @@ mod tests {
     fn incorrect_type() {
         let input = &Json::from_string(r#"["x", "value"]"#).unwrap();
 
-        let ty = JsonSchema::Type(Type::String);
+        let ty = vec![&JsonSchema::Type(Type::String)];
 
         let schema = Property {
             required: false,
             name: "x".to_string(),
-            schema: &ty,
+            schemas: ty,
         };
 
         let annotations = &mut Vec::new();

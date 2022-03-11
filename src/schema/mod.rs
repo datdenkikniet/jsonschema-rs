@@ -2,8 +2,8 @@ pub mod keywords;
 
 use crate::json::{Json, Key};
 
-use self::keywords::{
-    annotations::{LogicError, PropertyError, TypeError},
+use keywords::{
+    annotations::{EnumError, LogicError, PropertyError, TypeError},
     LogicApplier, Property, Type,
 };
 
@@ -20,29 +20,12 @@ trait AnnotationValue {
     fn is_error(&self) -> bool;
 }
 
-impl AnnotationValue for bool {
-    fn is_error(&self) -> bool {
-        !self
-    }
-}
-
-impl<T> AnnotationValue for Option<T>
-where
-    T: AnnotationValue,
-{
-    fn is_error(&self) -> bool {
-        match self {
-            Some(value) => value.is_error(),
-            None => false,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum Annotation<'schema> {
     LogicError(LogicError<'schema>),
     PropertyError(PropertyError<'schema>),
     TypeError(TypeError),
+    EnumError(EnumError),
     Unequal {
         schema: &'schema JsonSchema<'schema>,
         key: Key,
@@ -131,6 +114,15 @@ pub struct ValidationResult<'schema> {
     pub annotations: Vec<Annotation<'schema>>,
 }
 
+impl<'schema> ValidationResult<'schema> {
+    pub fn success(&self) -> bool {
+        self.success
+    }
+    pub fn annotations(&self) -> &Vec<Annotation> {
+        &self.annotations
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -143,7 +135,7 @@ mod tests {
 
     #[test]
     fn big_test() {
-        let input = r#"{"first_key": "value", "second_key": {"first_nested_key": 1e23, "second_nested_key": 123}}"#;
+        let input = r#"{"first_key": "value", "second_key": {"first_nested_key": 1e23, "second_nested_key": "123"}}"#;
         let tokens = &mut Vec::new();
         Lexer::new(Some(input))
             .lex_into(input.chars(), tokens)
@@ -152,17 +144,25 @@ mod tests {
         let input = Parser::parse_tokens(&tokens).unwrap().unwrap();
 
         let second_level = JsonSchema::Properties(vec![
-            Property::new("first_nested_key", &JsonSchema::Type(Type::Number), false),
-            Property::new("second_nested_key", &JsonSchema::Type(Type::String), false),
+            Property::new(
+                "first_nested_key",
+                vec![&JsonSchema::Type(Type::Number)],
+                false,
+            ),
+            Property::new(
+                "second_nested_key",
+                vec![&JsonSchema::Type(Type::String)],
+                false,
+            ),
         ]);
 
         let first_level = JsonSchema::Properties(vec![
-            Property::new("first_key", &JsonSchema::Type(Type::String), false),
-            Property::new("second_key", &second_level, false),
+            Property::new("first_key", vec![&JsonSchema::Type(Type::String)], false),
+            Property::new("second_key", vec![&second_level], false),
         ]);
 
-        let annotations = first_level.validate(&input);
+        let validation = first_level.validate(&input);
 
-        panic!("{:#?}", annotations.annotations);
+        assert!(validation.annotations().is_empty(), "{:?}", validation);
     }
 }
