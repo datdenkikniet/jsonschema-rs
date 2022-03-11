@@ -6,7 +6,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum PropertyErrorKind {
     IncorrectType,
-    Missing { required: bool },
+    Missing,
     Invalid,
 }
 
@@ -19,10 +19,7 @@ pub struct PropertyError<'schema> {
 
 impl<'schema> AnnotationValue for PropertyError<'schema> {
     fn is_error(&self) -> bool {
-        match self.kind {
-            PropertyErrorKind::Missing { required } => required,
-            _ => true,
-        }
+        true
     }
 }
 
@@ -95,9 +92,7 @@ impl<'me> JsonSchemaValidator for Property<'me> {
                 PropertyError {
                     schema: self.clone().into(),
                     key: key_to_input.copy_of(),
-                    kind: PropertyErrorKind::Missing {
-                        required: self.required,
-                    },
+                    kind: PropertyErrorKind::Missing,
                 }
                 .into(),
             );
