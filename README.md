@@ -2,11 +2,11 @@
 The following features from draft 2020-12 should be added:
 - [x] JSON tokenization & parsing
 - [ ] JSON schema parsing from JSON
-    - [ ] `title`
     - [ ] `$id`
-    - [ ] `$vocabulary`
+    - [x] `$vocabulary`
     - [ ] `$ref`
-    - [ ] `$defs`
+    - [x] `$defs`
+    - [x] Parse schemas in general
 - [ ] Basic JSON schema keywords/validation
     - [x] JSON primitive comparison
     - [x] `properties`
@@ -15,6 +15,8 @@ The following features from draft 2020-12 should be added:
     - [ ] `if`, `then`, `else`, `dependentSchemas`
     - [ ] `prefixItems`, `items`, `contains`
     - [ ] `unevaluatedItems`, `unevaluatedProperties`
+    - [ ] `title`
+    - [ ] `description`
 - [ ] Additional JSON schema keywords
     - [x] `enum`
     - [x] `type`

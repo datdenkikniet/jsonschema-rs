@@ -49,7 +49,7 @@ impl From<&Json> for Type {
 impl JsonSchemaValidator for Type {
     fn validate_json<'schema>(
         &'schema self,
-        key_to_input: &mut Key,
+        key_to_input: Key,
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {

@@ -22,7 +22,7 @@ pub struct Enum {
 impl JsonSchemaValidator for Enum {
     fn validate_json<'schema>(
         &'schema self,
-        key_to_input: &mut Key,
+        key_to_input: Key,
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
@@ -51,10 +51,10 @@ fn test() {
 
     let correct_value = "a".into();
 
-    let key = &mut Key::default();
+    let key = Key::default();
     let annotations = &mut Vec::new();
 
-    assert!(enum_vals.validate_json(key, &correct_value, annotations));
+    assert!(enum_vals.validate_json(key.copy_of(), &correct_value, annotations));
 
     let incorrect_value = "c".into();
     assert!(!enum_vals.validate_json(key, &incorrect_value, annotations));

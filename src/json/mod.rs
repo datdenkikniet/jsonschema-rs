@@ -12,7 +12,7 @@ pub enum KeyPart {
     Index(usize),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct Key {
     depth: usize,
     parts: Vec<KeyPart>,
@@ -63,14 +63,21 @@ impl Key {
         }
     }
 
+    #[must_use]
     pub fn copy_of(&self) -> Self {
-        let mut cloned = self.clone();
+        let Key { parts, .. } = self;
+        let mut cloned = Key {
+            depth: 0,
+            parts: parts.clone(),
+        };
         cloned.depth = 0;
         cloned
     }
 
-    pub fn push(&mut self, part: KeyPart) {
+    #[must_use]
+    pub fn push(mut self, part: KeyPart) -> Self {
         self.parts.push(part);
+        self
     }
 
     pub fn pop(&mut self) -> Option<KeyPart> {

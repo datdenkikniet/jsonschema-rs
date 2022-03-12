@@ -18,7 +18,7 @@ use self::uri::Uri;
 trait JsonSchemaValidator {
     fn validate_json<'schema>(
         &'schema self,
-        key_to_input: &mut Key,
+        key_to_input: Key,
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool;
@@ -44,31 +44,45 @@ pub enum Annotation<'schema> {
 pub struct JsonSchema<'schema> {
     id: Option<Uri>,
     vocabulary: Option<HashMap<Uri, bool>>,
-    defs: Option<HashMap<String, RootSchema<'schema>>>,
-    root_schema: Option<RootSchema<'schema>>,
+    defs: Option<HashMap<String, JsonSchema<'schema>>>,
+    schemas: Vec<RootSchema<'schema>>,
+    unknowns: HashMap<String, &'schema Json>,
 }
 
 impl<'schema> JsonSchema<'schema> {
     pub fn new(
         id: Option<Uri>,
         vocabulary: Option<HashMap<Uri, bool>>,
-        defs: Option<HashMap<String, RootSchema<'schema>>>,
-        root_schema: Option<RootSchema<'schema>>,
+        defs: Option<HashMap<String, JsonSchema<'schema>>>,
+        schemas: Vec<RootSchema<'schema>>,
+        unknowns: HashMap<String, &'schema Json>,
     ) -> Self {
         Self {
             id,
             vocabulary,
             defs,
-            root_schema,
+            schemas,
+            unknowns,
         }
     }
 
-    pub fn with_root_schema(root_schema: RootSchema<'schema>) -> Self {
+    pub fn with_root_schemas(schemas: Vec<RootSchema<'schema>>) -> Self {
         Self {
             id: None,
             vocabulary: None,
             defs: None,
-            root_schema: Some(root_schema),
+            unknowns: HashMap::new(),
+            schemas,
+        }
+    }
+
+    pub fn from_primitive(primitive: &'schema Json) -> Self {
+        Self {
+            id: None,
+            vocabulary: None,
+            defs: None,
+            unknowns: HashMap::new(),
+            schemas: vec![RootSchema::Primitive(primitive)],
         }
     }
 
@@ -80,32 +94,56 @@ impl<'schema> JsonSchema<'schema> {
         &self.vocabulary
     }
 
-    pub fn defs(&self) -> &Option<HashMap<String, RootSchema>> {
+    pub fn defs(&self) -> &Option<HashMap<String, JsonSchema>> {
         &self.defs
     }
 
-    pub fn root_schema(&self) -> &Option<RootSchema> {
-        &self.root_schema
+    pub fn schemas(&self) -> &Vec<RootSchema> {
+        &self.schemas
+    }
+}
+
+impl<'schema> JsonSchema<'schema> {
+    fn validate_json<'input>(
+        &'schema self,
+        key_to_input: Key,
+        input: &'input Json,
+        annotations: &mut Vec<Annotation<'schema>>,
+    ) -> bool {
+        let mut success = true;
+        for schema in self.schemas() {
+            if !schema.validate_json(key_to_input.copy_of(), input, annotations) {
+                success = false;
+            }
+        }
+        success
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum RootSchema<'schema> {
+    Ref(&'schema RootSchema<'schema>),
     Primitive(&'schema Json),
     Logic(LogicApplier<'schema>),
     Properties(Vec<Property<'schema>>),
     Type(Type),
+    Unknown(Key, &'schema Json),
 }
 
 impl<'schema> RootSchema<'schema> {
     fn validate_json<'input>(
         &'schema self,
-        key_to_input: &mut Key,
+        key_to_input: Key,
         input: &'input Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
         let mut success = true;
         match self {
+            RootSchema::Ref(schema) => {
+                if !schema.validate_json(key_to_input, input, annotations) {
+                    success = false;
+                }
+            }
             RootSchema::Primitive(primitive) => {
                 if &input != primitive {
                     success = false;
@@ -125,7 +163,7 @@ impl<'schema> RootSchema<'schema> {
             }
             RootSchema::Properties(properties) => {
                 for property in properties {
-                    if !property.validate_json(key_to_input, input, annotations) {
+                    if !property.validate_json(key_to_input.copy_of(), input, annotations) {
                         success = false;
                     }
                 }
@@ -135,6 +173,7 @@ impl<'schema> RootSchema<'schema> {
                     success = false;
                 }
             }
+            RootSchema::Unknown(..) => {}
         }
 
         success
@@ -144,7 +183,7 @@ impl<'schema> RootSchema<'schema> {
 impl<'schema> RootSchema<'schema> {
     pub fn validate<'a>(&'a self, input: &'a Json) -> ValidationResult<'a> {
         let mut annotations = Vec::new();
-        let key_to_input = &mut Key::default();
+        let key_to_input = Key::default();
         let validation_success = self.validate_json(key_to_input, input, &mut annotations);
         ValidationResult {
             success: validation_success,
@@ -156,6 +195,12 @@ impl<'schema> RootSchema<'schema> {
 impl<'schema> From<&'schema Json> for RootSchema<'schema> {
     fn from(input: &'schema Json) -> Self {
         Self::Primitive(input)
+    }
+}
+
+impl<'schema> Into<JsonSchema<'schema>> for RootSchema<'schema> {
+    fn into(self) -> JsonSchema<'schema> {
+        JsonSchema::with_root_schemas(vec![self])
     }
 }
 
@@ -180,7 +225,7 @@ mod tests {
         json::{Lexer, Parser},
         schema::{
             keywords::{Property, Type},
-            RootSchema,
+            JsonSchema, RootSchema,
         },
     };
 
@@ -194,21 +239,16 @@ mod tests {
 
         let input = Parser::parse_tokens(&tokens).unwrap().unwrap();
 
-        let second_level = RootSchema::Properties(vec![
-            Property::new(
-                "first_nested_key",
-                vec![&RootSchema::Type(Type::Number)],
-                false,
-            ),
-            Property::new(
-                "second_nested_key",
-                vec![&RootSchema::Type(Type::String)],
-                false,
-            ),
-        ]);
+        let string_type = JsonSchema::with_root_schemas(vec![RootSchema::Type(Type::String)]);
+        let number_type = JsonSchema::with_root_schemas(vec![RootSchema::Type(Type::Number)]);
+
+        let second_level = JsonSchema::with_root_schemas(vec![RootSchema::Properties(vec![
+            Property::new("first_nested_key", vec![&number_type], false),
+            Property::new("second_nested_key", vec![&string_type], false),
+        ])]);
 
         let first_level = RootSchema::Properties(vec![
-            Property::new("first_key", vec![&RootSchema::Type(Type::String)], false),
+            Property::new("first_key", vec![&string_type], false),
             Property::new("second_key", vec![&second_level], false),
         ]);
 

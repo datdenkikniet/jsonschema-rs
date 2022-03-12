@@ -1,13 +1,13 @@
 use crate::{
     json::{Json, Key},
-    schema::{Annotation, AnnotationValue, JsonSchemaValidator, RootSchema},
+    schema::{Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
 };
 
 #[derive(Debug, Clone)]
 pub struct LogicError<'schema> {
     pub key: Key,
-    pub schema: RootSchema<'schema>,
-    pub kind: LogicErrorKind<'schema>,
+    pub schema: &'schema LogicApplier<'schema>,
+    pub kind: LogicErrorKind,
 }
 
 impl<'schema> Into<Annotation<'schema>> for LogicError<'schema> {
@@ -23,48 +23,41 @@ impl<'schema> AnnotationValue for LogicError<'schema> {
 }
 
 #[derive(Debug, Clone)]
-pub enum LogicErrorKind<'schema> {
-    AllOfMissing(&'schema Vec<&'schema RootSchema<'schema>>),
-    AnyOfMissing(&'schema Vec<&'schema RootSchema<'schema>>),
-    OneOfMissing(&'schema Vec<&'schema RootSchema<'schema>>),
-    OneOfMoreThanOne(&'schema Vec<&'schema RootSchema<'schema>>),
-    NotIs(&'schema RootSchema<'schema>),
+pub enum LogicErrorKind {
+    AllOfMissing,
+    AnyOfMissing,
+    OneOfMissing,
+    OneOfMoreThanOne,
+    NotIs,
 }
 
 #[derive(Debug, Clone)]
 pub enum LogicApplier<'schema> {
-    AllOf(Vec<&'schema RootSchema<'schema>>),
-    AnyOf(Vec<&'schema RootSchema<'schema>>),
-    OneOf(Vec<&'schema RootSchema<'schema>>),
-    Not(&'schema RootSchema<'schema>),
-}
-
-impl<'schema> Into<RootSchema<'schema>> for LogicApplier<'schema> {
-    fn into(self) -> RootSchema<'schema> {
-        RootSchema::Logic(self)
-    }
+    AllOf(Vec<JsonSchema<'schema>>),
+    AnyOf(Vec<JsonSchema<'schema>>),
+    OneOf(Vec<JsonSchema<'schema>>),
+    Not(JsonSchema<'schema>),
 }
 
 impl<'me> JsonSchemaValidator for LogicApplier<'me> {
     fn validate_json<'schema>(
         &'schema self,
-        key_to_input: &mut Key,
+        key_to_input: Key,
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
         let mut success = true;
-        let key = Key::default();
         let schemas = match self {
             LogicApplier::AllOf(schemas)
             | LogicApplier::AnyOf(schemas)
             | LogicApplier::OneOf(schemas) => schemas,
             LogicApplier::Not(schema) => {
-                if schema.validate_json(key_to_input, input, annotations) {
+                if schema.validate_json(key_to_input.copy_of(), input, annotations) {
                     annotations.push(
                         LogicError {
-                            schema: self.clone().into(),
-                            key: key.clone(),
-                            kind: LogicErrorKind::NotIs(schema),
+                            schema: self,
+                            key: key_to_input.copy_of(),
+                            kind: LogicErrorKind::NotIs,
                         }
                         .into(),
                     );
@@ -78,45 +71,45 @@ impl<'me> JsonSchemaValidator for LogicApplier<'me> {
 
         let mut valid = 0;
         for schema in schemas {
-            if schema.validate_json(key_to_input, input, annotations) {
+            if schema.validate_json(key_to_input.copy_of(), input, annotations) {
                 valid += 1;
             }
         }
 
         match self {
-            LogicApplier::AllOf(vec) => {
+            LogicApplier::AllOf(_) => {
                 if valid != total_size {
                     annotations.push(
                         LogicError {
-                            schema: self.clone().into(),
-                            key: key.copy_of(),
-                            kind: LogicErrorKind::AllOfMissing(vec),
+                            schema: self,
+                            key: key_to_input.copy_of(),
+                            kind: LogicErrorKind::AllOfMissing,
                         }
                         .into(),
                     );
                     success = false;
                 }
             }
-            LogicApplier::AnyOf(vec) => {
+            LogicApplier::AnyOf(_) => {
                 if valid == 0 {
                     annotations.push(
                         LogicError {
-                            schema: self.clone().into(),
-                            key: key.copy_of(),
-                            kind: LogicErrorKind::AnyOfMissing(vec),
+                            schema: self,
+                            key: key_to_input.copy_of(),
+                            kind: LogicErrorKind::AnyOfMissing,
                         }
                         .into(),
                     );
                     success = false;
                 }
             }
-            LogicApplier::OneOf(vec) => {
+            LogicApplier::OneOf(_) => {
                 if valid == 0 {
                     annotations.push(
                         LogicError {
-                            schema: self.clone().into(),
-                            key: key.copy_of(),
-                            kind: LogicErrorKind::OneOfMissing(vec),
+                            schema: self,
+                            key: key_to_input.copy_of(),
+                            kind: LogicErrorKind::OneOfMissing,
                         }
                         .into(),
                     );
@@ -124,9 +117,9 @@ impl<'me> JsonSchemaValidator for LogicApplier<'me> {
                 } else if valid != 1 {
                     annotations.push(
                         LogicError {
-                            schema: self.clone().into(),
-                            key: key.copy_of(),
-                            kind: LogicErrorKind::OneOfMoreThanOne(vec),
+                            schema: self,
+                            key: key_to_input.copy_of(),
+                            kind: LogicErrorKind::OneOfMoreThanOne,
                         }
                         .into(),
                     );
@@ -163,12 +156,12 @@ impl<'schema> LogicApplier<'schema> {
 mod tests {
     use super::LogicApplier;
     use crate::json::{Json, Key};
-    use crate::schema::{JsonSchemaValidator, RootSchema};
+    use crate::schema::{JsonSchema, JsonSchemaValidator};
 
     macro_rules! assert_pretty_print {
         ($applier: expr, $test: expr, $input: expr) => {
             let errors = &mut Vec::new();
-            let key = &mut Key::default();
+            let key = Key::default();
             assert!(
                 $applier.validate_json(key, &$input, errors) == $test,
                 "Failed: {:?} = {:?} not {}",
@@ -186,19 +179,19 @@ mod tests {
                 let input: Json = "Test".into();
                 let not_present: Json = "Not present".into();
 
-                let me = &RootSchema::Primitive(&input);
-                let not_me = &RootSchema::Primitive(&not_present);
+                let me = JsonSchema::from_primitive(&input);
+                let not_me = JsonSchema::from_primitive(&not_present);
 
-                let applier = $applier(vec![me]);
-                assert_pretty_print!(applier, $self_only, input);
+                let applier = $applier(vec![me.clone()]);
+                assert_pretty_print!(applier, $self_only, input.clone());
 
-                let applier = $applier(vec![me, not_me]);
+                let applier = $applier(vec![me.clone(), not_me.clone()]);
                 assert_pretty_print!(applier, $self_and_other, input);
 
-                let applier = $applier(vec![me, me]);
+                let applier = $applier(vec![me.clone(), me.clone()]);
                 assert_pretty_print!(applier, $self_twice, input);
 
-                let applier = $applier(vec![not_me]);
+                let applier = $applier(vec![not_me.clone()]);
                 assert_pretty_print!(applier, $only_other, input);
             }
         };
@@ -213,8 +206,8 @@ mod tests {
         let input: Json = "Test".into();
         let not_present: Json = "Not present".into();
 
-        let me = &RootSchema::Primitive(&input);
-        let not_me = &RootSchema::Primitive(&not_present);
+        let me = JsonSchema::from_primitive(&input);
+        let not_me = JsonSchema::from_primitive(&not_present);
 
         let applier = LogicApplier::Not(me);
         assert_pretty_print!(applier, false, input);
