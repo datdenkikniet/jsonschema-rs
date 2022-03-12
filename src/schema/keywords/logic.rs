@@ -1,12 +1,12 @@
 use crate::{
     json::{Json, Key},
-    schema::{Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
+    schema::{Annotation, AnnotationValue, JsonSchemaValidator, RootSchema},
 };
 
 #[derive(Debug, Clone)]
 pub struct LogicError<'schema> {
     pub key: Key,
-    pub schema: JsonSchema<'schema>,
+    pub schema: RootSchema<'schema>,
     pub kind: LogicErrorKind<'schema>,
 }
 
@@ -24,24 +24,24 @@ impl<'schema> AnnotationValue for LogicError<'schema> {
 
 #[derive(Debug, Clone)]
 pub enum LogicErrorKind<'schema> {
-    AllOfMissing(&'schema Vec<&'schema JsonSchema<'schema>>),
-    AnyOfMissing(&'schema Vec<&'schema JsonSchema<'schema>>),
-    OneOfMissing(&'schema Vec<&'schema JsonSchema<'schema>>),
-    OneOfMoreThanOne(&'schema Vec<&'schema JsonSchema<'schema>>),
-    NotIs(&'schema JsonSchema<'schema>),
+    AllOfMissing(&'schema Vec<&'schema RootSchema<'schema>>),
+    AnyOfMissing(&'schema Vec<&'schema RootSchema<'schema>>),
+    OneOfMissing(&'schema Vec<&'schema RootSchema<'schema>>),
+    OneOfMoreThanOne(&'schema Vec<&'schema RootSchema<'schema>>),
+    NotIs(&'schema RootSchema<'schema>),
 }
 
 #[derive(Debug, Clone)]
 pub enum LogicApplier<'schema> {
-    AllOf(Vec<&'schema JsonSchema<'schema>>),
-    AnyOf(Vec<&'schema JsonSchema<'schema>>),
-    OneOf(Vec<&'schema JsonSchema<'schema>>),
-    Not(&'schema JsonSchema<'schema>),
+    AllOf(Vec<&'schema RootSchema<'schema>>),
+    AnyOf(Vec<&'schema RootSchema<'schema>>),
+    OneOf(Vec<&'schema RootSchema<'schema>>),
+    Not(&'schema RootSchema<'schema>),
 }
 
-impl<'schema> Into<JsonSchema<'schema>> for LogicApplier<'schema> {
-    fn into(self) -> JsonSchema<'schema> {
-        JsonSchema::Logic(self)
+impl<'schema> Into<RootSchema<'schema>> for LogicApplier<'schema> {
+    fn into(self) -> RootSchema<'schema> {
+        RootSchema::Logic(self)
     }
 }
 
@@ -163,7 +163,7 @@ impl<'schema> LogicApplier<'schema> {
 mod tests {
     use super::LogicApplier;
     use crate::json::{Json, Key};
-    use crate::schema::JsonSchemaValidator;
+    use crate::schema::{JsonSchemaValidator, RootSchema};
 
     macro_rules! assert_pretty_print {
         ($applier: expr, $test: expr, $input: expr) => {
@@ -184,9 +184,10 @@ mod tests {
             #[test]
             fn $name() {
                 let input: Json = "Test".into();
+                let not_present: Json = "Not present".into();
 
-                let me = &input.clone().into();
-                let not_me = &"Not present".into();
+                let me = &RootSchema::Primitive(&input);
+                let not_me = &RootSchema::Primitive(&not_present);
 
                 let applier = $applier(vec![me]);
                 assert_pretty_print!(applier, $self_only, input);
@@ -210,9 +211,10 @@ mod tests {
     #[test]
     fn not() {
         let input: Json = "Test".into();
+        let not_present: Json = "Not present".into();
 
-        let me = &input.clone().into();
-        let not_me = &"Not present".into();
+        let me = &RootSchema::Primitive(&input);
+        let not_me = &RootSchema::Primitive(&not_present);
 
         let applier = LogicApplier::Not(me);
         assert_pretty_print!(applier, false, input);
