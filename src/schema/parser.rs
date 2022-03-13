@@ -6,7 +6,7 @@ use crate::{
 };
 
 use super::{
-    keywords::{Enum, Items, LogicApplier, PrefixItems, PrimitiveType, Type},
+    keywords::{Contains, Enum, Items, LogicApplier, PrefixItems, PrimitiveType, Type},
     uri::UriParseError,
     JsonSchema, RootSchema,
 };
@@ -142,6 +142,7 @@ impl Parser {
                 "type" => Self::parse_type(key, v)?,
                 "items" => Self::parse_items(key, v)?,
                 "prefixItems" => Self::parse_prefix_items(key, v)?,
+                "contains" => Self::parse_contains(key, v)?,
                 _ => {
                     unknowns.insert(k.clone(), v);
                     continue;
@@ -339,6 +340,11 @@ impl Parser {
 
         Ok(RootSchema::PrefixItems(PrefixItems::new(schemas)))
     }
+
+    fn parse_contains(key: Key, input: &Json) -> Result<RootSchema, SchemaParseError> {
+        let schema = Self::parse_json_schema_rec(key, input)?;
+        Ok(RootSchema::Contains(Contains::new(schema)))
+    }
 }
 
 #[cfg(test)]
@@ -356,6 +362,23 @@ mod test {
             let result = Parser::parse_json_schema(input).unwrap();
             assert_eq!(result, $output);
         };
+    }
+
+    #[test]
+    fn all() {
+        let input = Json::from_string(
+            r#"
+            {
+                "items": "items",
+                "prefixItems": ["prefix", "items"],
+                "contains": "contains"
+            }
+        "#,
+        )
+        .unwrap();
+
+        let schema = Parser::parse_json_schema(&input);
+        panic!("{:#?}", schema.unwrap());
     }
 
     #[test]

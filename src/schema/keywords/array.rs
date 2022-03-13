@@ -1,18 +1,19 @@
 use crate::{
     json::{Json, Key},
-    schema::{Annotation, JsonSchema, JsonSchemaValidator},
+    schema::{get_if_is, Annotation, JsonSchema, JsonSchemaValidator},
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ItemsError {
+pub struct ArrayError {
     pub key: Key,
-    pub kind: ItemsErrorKind,
+    pub kind: ArrayErrorKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ItemsErrorKind {
+pub enum ArrayErrorKind {
     NotArray,
     PrefixItemMissing,
+    DoesNotContain,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,9 +33,9 @@ impl<'me> JsonSchemaValidator for PrefixItems<'me> {
             Json::Array(array) => array,
             _ => {
                 annotations.push(
-                    ItemsError {
+                    ArrayError {
                         key: key_to_input.copy_of(),
-                        kind: ItemsErrorKind::NotArray,
+                        kind: ArrayErrorKind::NotArray,
                     }
                     .into(),
                 );
@@ -54,9 +55,9 @@ impl<'me> JsonSchemaValidator for PrefixItems<'me> {
             } else {
                 success = false;
                 annotations.push(
-                    ItemsError {
+                    ArrayError {
                         key: key_to_input.copy_of().push_idx(i),
-                        kind: ItemsErrorKind::PrefixItemMissing,
+                        kind: ArrayErrorKind::PrefixItemMissing,
                     }
                     .into(),
                 )
@@ -89,19 +90,13 @@ impl<'me> JsonSchemaValidator for Items<'me> {
     ) -> bool {
         let mut success = true;
 
-        let items = match input {
-            Json::Array(arr) => arr,
-            _ => {
-                annotations.push(
-                    ItemsError {
-                        key: key_to_input.copy_of(),
-                        kind: ItemsErrorKind::NotArray,
-                    }
-                    .into(),
-                );
-                return false;
+        let items = get_if_is!(input, Json::Array, || annotations.push(
+            ArrayError {
+                key: key_to_input.copy_of(),
+                kind: ArrayErrorKind::NotArray,
             }
-        };
+            .into(),
+        ));
 
         let start = if let Some(prefix_len) = annotations.iter().find_map(|annotation| {
             if let Annotation::PrefixItemsLen(key, len) = annotation {
@@ -151,7 +146,32 @@ impl<'me> JsonSchemaValidator for Contains<'me> {
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
-        todo!()
+        let values = get_if_is!(input, Json::Array, || annotations.push(
+            ArrayError {
+                key: key_to_input,
+                kind: ArrayErrorKind::NotArray,
+            }
+            .into()
+        ));
+
+        let mut contains = false;
+        for i in 0..values.len() {
+            let value = &values[i];
+            if self
+                .schema
+                .validate_json(key_to_input.copy_of().push_idx(i), value, annotations)
+            {
+                contains = true;
+            }
+        }
+
+        contains
+    }
+}
+
+impl<'schema> Contains<'schema> {
+    pub fn new(schema: JsonSchema<'schema>) -> Self {
+        Self { schema }
     }
 }
 

@@ -76,59 +76,46 @@ impl<'me> JsonSchemaValidator for LogicApplier<'me> {
             }
         }
 
-        match self {
+        let err = match self {
             LogicApplier::AllOf(_) => {
                 if valid != total_size {
-                    annotations.push(
-                        LogicError {
-                            schema: self,
-                            key: key_to_input.copy_of(),
-                            kind: LogicErrorKind::AllOfMissing,
-                        }
-                        .into(),
-                    );
-                    success = false;
+                    Some(LogicErrorKind::AllOfMissing)
+                } else {
+                    None
                 }
             }
             LogicApplier::AnyOf(_) => {
                 if valid == 0 {
-                    annotations.push(
-                        LogicError {
-                            schema: self,
-                            key: key_to_input.copy_of(),
-                            kind: LogicErrorKind::AnyOfMissing,
-                        }
-                        .into(),
-                    );
-                    success = false;
+                    Some(LogicErrorKind::AnyOfMissing)
+                } else {
+                    None
                 }
             }
             LogicApplier::OneOf(_) => {
                 if valid == 0 {
-                    annotations.push(
-                        LogicError {
-                            schema: self,
-                            key: key_to_input.copy_of(),
-                            kind: LogicErrorKind::OneOfMissing,
-                        }
-                        .into(),
-                    );
-                    success = false;
+                    Some(LogicErrorKind::OneOfMissing)
                 } else if valid != 1 {
-                    annotations.push(
-                        LogicError {
-                            schema: self,
-                            key: key_to_input.copy_of(),
-                            kind: LogicErrorKind::OneOfMoreThanOne,
-                        }
-                        .into(),
-                    );
-                    success = false;
+                    Some(LogicErrorKind::OneOfMoreThanOne)
+                } else {
+                    None
                 }
             }
             LogicApplier::Not(_) => unreachable!(),
+        };
+
+        if let Some(err) = err {
+            annotations.push(
+                LogicError {
+                    key: key_to_input,
+                    schema: self,
+                    kind: err,
+                }
+                .into(),
+            );
+            false
+        } else {
+            true
         }
-        success
     }
 }
 

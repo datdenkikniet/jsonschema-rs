@@ -14,9 +14,23 @@ use keywords::{
 };
 
 use self::{
-    keywords::{annotations::ItemsError, Enum, Items, PrefixItems},
+    keywords::{annotations::ArrayError, Contains, Enum, Items, PrefixItems},
     uri::Uri,
 };
+
+macro_rules! get_if_is {
+    ($input: expr, $is: path, $err: expr) => {
+        match $input {
+            $is(val) => val,
+            _ => {
+                $err();
+                return false;
+            }
+        }
+    };
+}
+
+pub(crate) use get_if_is;
 
 trait JsonSchemaValidator {
     fn validate_json<'schema>(
@@ -37,7 +51,7 @@ pub enum Annotation<'schema> {
     PropertyError(PropertyError<'schema>),
     TypeError(TypeError),
     EnumError(EnumError),
-    ItemsError(ItemsError),
+    ItemsError(ArrayError),
     Unequal {
         schema: &'schema JsonSchema<'schema>,
         key: Key,
@@ -45,8 +59,8 @@ pub enum Annotation<'schema> {
     PrefixItemsLen(Key, usize),
 }
 
-impl<'schema> From<ItemsError> for Annotation<'schema> {
-    fn from(e: ItemsError) -> Self {
+impl<'schema> From<ArrayError> for Annotation<'schema> {
+    fn from(e: ArrayError) -> Self {
         Self::ItemsError(e)
     }
 }
@@ -145,6 +159,7 @@ pub enum RootSchema<'schema> {
     Enum(Enum<'schema>),
     Items(Items<'schema>),
     PrefixItems(PrefixItems<'schema>),
+    Contains(Contains<'schema>),
 }
 
 impl<'schema> RootSchema<'schema> {
@@ -187,6 +202,9 @@ impl<'schema> RootSchema<'schema> {
             RootSchema::Enum(en) => en.validate_json(key_to_input, input, annotations),
             RootSchema::PrefixItems(items) => items.validate_json(key_to_input, input, annotations),
             RootSchema::Items(items) => items.validate_json(key_to_input, input, annotations),
+            RootSchema::Contains(contains) => {
+                contains.validate_json(key_to_input, input, annotations)
+            }
         };
 
         success

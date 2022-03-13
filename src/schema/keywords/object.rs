@@ -1,6 +1,6 @@
 use crate::{
     json::{Json, Key},
-    schema::{keywords::get_if_is, Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
+    schema::{get_if_is, Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,17 +43,14 @@ impl<'me> JsonSchemaValidator for Property<'me> {
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
-        let object = get_if_is!(
-            input,
-            annotations,
-            Json::Object,
+        let object = get_if_is!(input, Json::Object, || annotations.push(
             PropertyError {
                 schema: self,
                 key: key_to_input.copy_of(),
                 kind: PropertyErrorKind::IncorrectType,
             }
             .into()
-        );
+        ));
 
         if let Some((object_key, object_value)) = object.iter().find(|(key, _)| key == &&self.name)
         {
