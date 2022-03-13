@@ -8,6 +8,10 @@ pub struct Uri {
 }
 
 impl Uri {
+    pub fn from_str(input: &str) -> Result<Self, UriParseError> {
+        Self::from_string(input.to_string())
+    }
+
     pub fn from_string(input: String) -> Result<Self, UriParseError> {
         Ok(Self {
             normalized: false,

@@ -13,7 +13,10 @@ use keywords::{
     LogicApplier, Property, Type,
 };
 
-use self::uri::Uri;
+use self::{
+    keywords::{annotations::ItemsError, Enum, Items, PrefixItems},
+    uri::Uri,
+};
 
 trait JsonSchemaValidator {
     fn validate_json<'schema>(
@@ -28,19 +31,27 @@ trait AnnotationValue {
     fn is_error(&self) -> bool;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Annotation<'schema> {
     LogicError(LogicError<'schema>),
     PropertyError(PropertyError<'schema>),
     TypeError(TypeError),
     EnumError(EnumError),
+    ItemsError(ItemsError),
     Unequal {
-        schema: &'schema RootSchema<'schema>,
+        schema: &'schema JsonSchema<'schema>,
         key: Key,
     },
+    PrefixItemsLen(Key, usize),
 }
 
-#[derive(Debug, Clone)]
+impl<'schema> From<ItemsError> for Annotation<'schema> {
+    fn from(e: ItemsError) -> Self {
+        Self::ItemsError(e)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JsonSchema<'schema> {
     id: Option<Uri>,
     vocabulary: Option<HashMap<Uri, bool>>,
@@ -101,6 +112,10 @@ impl<'schema> JsonSchema<'schema> {
     pub fn schemas(&self) -> &Vec<RootSchema> {
         &self.schemas
     }
+
+    pub fn unknowns(&self) -> &HashMap<String, &'schema Json> {
+        &self.unknowns
+    }
 }
 
 impl<'schema> JsonSchema<'schema> {
@@ -112,7 +127,7 @@ impl<'schema> JsonSchema<'schema> {
     ) -> bool {
         let mut success = true;
         for schema in self.schemas() {
-            if !schema.validate_json(key_to_input.copy_of(), input, annotations) {
+            if !schema.validate_json(self, key_to_input.copy_of(), input, annotations) {
                 success = false;
             }
         }
@@ -120,87 +135,85 @@ impl<'schema> JsonSchema<'schema> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum RootSchema<'schema> {
     Ref(&'schema RootSchema<'schema>),
     Primitive(&'schema Json),
     Logic(LogicApplier<'schema>),
     Properties(Vec<Property<'schema>>),
     Type(Type),
-    Unknown(Key, &'schema Json),
+    Enum(Enum<'schema>),
+    Items(Items<'schema>),
+    PrefixItems(PrefixItems<'schema>),
 }
 
 impl<'schema> RootSchema<'schema> {
     fn validate_json<'input>(
         &'schema self,
+        parent: &'schema JsonSchema,
         key_to_input: Key,
         input: &'input Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
-        let mut success = true;
-        match self {
+        let success = match self {
             RootSchema::Ref(schema) => {
-                if !schema.validate_json(key_to_input, input, annotations) {
-                    success = false;
-                }
+                schema.validate_json(parent, key_to_input, input, annotations)
             }
             RootSchema::Primitive(primitive) => {
                 if &input != primitive {
-                    success = false;
                     annotations.push(
                         Annotation::Unequal {
-                            schema: self,
+                            schema: parent,
                             key: key_to_input.copy_of(),
                         }
                         .into(),
                     );
+                    false
+                } else {
+                    true
                 }
             }
-            RootSchema::Logic(logic) => {
-                if !logic.validate_json(key_to_input, input, annotations) {
-                    success = false;
-                }
-            }
+            RootSchema::Logic(logic) => logic.validate_json(key_to_input, input, annotations),
             RootSchema::Properties(properties) => {
+                let mut success = true;
                 for property in properties {
                     if !property.validate_json(key_to_input.copy_of(), input, annotations) {
                         success = false;
                     }
                 }
+                success
             }
-            RootSchema::Type(ty) => {
-                if !ty.validate_json(key_to_input, input, annotations) {
-                    success = false;
-                }
-            }
-            RootSchema::Unknown(..) => {}
-        }
+            RootSchema::Type(ty) => ty.validate_json(key_to_input, input, annotations),
+            RootSchema::Enum(en) => en.validate_json(key_to_input, input, annotations),
+            RootSchema::PrefixItems(items) => items.validate_json(key_to_input, input, annotations),
+            RootSchema::Items(items) => items.validate_json(key_to_input, input, annotations),
+        };
 
         success
-    }
-}
-
-impl<'schema> RootSchema<'schema> {
-    pub fn validate<'a>(&'a self, input: &'a Json) -> ValidationResult<'a> {
-        let mut annotations = Vec::new();
-        let key_to_input = Key::default();
-        let validation_success = self.validate_json(key_to_input, input, &mut annotations);
-        ValidationResult {
-            success: validation_success,
-            annotations,
-        }
-    }
-}
-
-impl<'schema> From<&'schema Json> for RootSchema<'schema> {
-    fn from(input: &'schema Json) -> Self {
-        Self::Primitive(input)
     }
 }
 
 impl<'schema> Into<JsonSchema<'schema>> for RootSchema<'schema> {
     fn into(self) -> JsonSchema<'schema> {
         JsonSchema::with_root_schemas(vec![self])
+    }
+}
+
+impl<'schema> From<Enum<'schema>> for RootSchema<'schema> {
+    fn from(en: Enum<'schema>) -> Self {
+        Self::Enum(en)
+    }
+}
+
+impl<'schema> From<Type> for RootSchema<'schema> {
+    fn from(en: Type) -> Self {
+        Self::Type(en)
+    }
+}
+
+impl<'schema> From<LogicApplier<'schema>> for RootSchema<'schema> {
+    fn from(logic: LogicApplier<'schema>) -> Self {
+        Self::Logic(logic)
     }
 }
 
@@ -222,9 +235,9 @@ impl<'schema> ValidationResult<'schema> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        json::{Lexer, Parser},
+        json::{Key, Lexer, Parser},
         schema::{
-            keywords::{Property, Type},
+            keywords::{PrimitiveType, Property},
             JsonSchema, RootSchema,
         },
     };
@@ -239,8 +252,10 @@ mod tests {
 
         let input = Parser::parse_tokens(&tokens).unwrap().unwrap();
 
-        let string_type = JsonSchema::with_root_schemas(vec![RootSchema::Type(Type::String)]);
-        let number_type = JsonSchema::with_root_schemas(vec![RootSchema::Type(Type::Number)]);
+        let string_type =
+            JsonSchema::with_root_schemas(vec![RootSchema::Type(PrimitiveType::String.into())]);
+        let number_type =
+            JsonSchema::with_root_schemas(vec![RootSchema::Type(PrimitiveType::Number.into())]);
 
         let second_level = JsonSchema::with_root_schemas(vec![RootSchema::Properties(vec![
             Property::new("first_nested_key", vec![&number_type], false),
@@ -252,8 +267,11 @@ mod tests {
             Property::new("second_key", vec![&second_level], false),
         ]);
 
-        let validation = first_level.validate(&input);
+        let first_level = JsonSchema::with_root_schemas(vec![first_level]);
 
-        assert!(validation.annotations().is_empty(), "{:?}", validation);
+        let annotations = &mut Vec::new();
+        let validation = first_level.validate_json(Key::default(), &input, annotations);
+
+        assert!(annotations.is_empty(), "{:?}", validation);
     }
 }

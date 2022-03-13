@@ -1,16 +1,16 @@
 use crate::{
-    json::{Json, Key, KeyPart},
-    schema::{Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
+    json::{Json, Key},
+    schema::{keywords::get_if_is, Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PropertyErrorKind {
     IncorrectType,
     Missing,
     Invalid,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PropertyError<'schema> {
     pub schema: &'schema Property<'schema>,
     pub key: Key,
@@ -29,7 +29,7 @@ impl<'schema> Into<Annotation<'schema>> for PropertyError<'schema> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Property<'schema> {
     required: bool,
     name: String,
@@ -43,26 +43,21 @@ impl<'me> JsonSchemaValidator for Property<'me> {
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
-        let object = match input {
-            Json::Object(obj) => obj,
-            _ => {
-                annotations.push(
-                    PropertyError {
-                        schema: self,
-                        key: key_to_input.copy_of(),
-                        kind: PropertyErrorKind::IncorrectType,
-                    }
-                    .into(),
-                );
-                return false;
+        let object = get_if_is!(
+            input,
+            annotations,
+            Json::Object,
+            PropertyError {
+                schema: self,
+                key: key_to_input.copy_of(),
+                kind: PropertyErrorKind::IncorrectType,
             }
-        };
+            .into()
+        );
 
         if let Some((object_key, object_value)) = object.iter().find(|(key, _)| key == &&self.name)
         {
-            let input_key = key_to_input
-                .copy_of()
-                .push(KeyPart::Identifier(object_key.clone()));
+            let input_key = key_to_input.copy_of().push_str(&object_key);
 
             let failures = self
                 .schemas
@@ -116,7 +111,7 @@ impl<'schema> Property<'schema> {
 mod tests {
     use crate::{
         json::{Json, Key},
-        schema::{keywords::Type, JsonSchema, JsonSchemaValidator, RootSchema},
+        schema::{keywords::PrimitiveType, JsonSchema, JsonSchemaValidator, RootSchema},
     };
 
     use super::Property;
@@ -125,7 +120,8 @@ mod tests {
     fn required() {
         let input = &Json::from_string(r#"{"x": "value"}"#).unwrap();
 
-        let schema = JsonSchema::with_root_schemas(vec![RootSchema::Type(Type::String)]);
+        let schema =
+            JsonSchema::with_root_schemas(vec![RootSchema::Type(PrimitiveType::String.into())]);
 
         let ty = vec![&schema];
 
@@ -157,7 +153,8 @@ mod tests {
     fn incorrect_type() {
         let input = &Json::from_string(r#"["x", "value"]"#).unwrap();
 
-        let schema = JsonSchema::with_root_schemas(vec![RootSchema::Type(Type::String)]);
+        let schema =
+            JsonSchema::with_root_schemas(vec![RootSchema::Type(PrimitiveType::String.into())]);
 
         let ty = vec![&schema];
 

@@ -3,7 +3,7 @@ use crate::{
     schema::{Annotation, AnnotationValue, JsonSchema, JsonSchemaValidator},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LogicError<'schema> {
     pub key: Key,
     pub schema: &'schema LogicApplier<'schema>,
@@ -22,7 +22,7 @@ impl<'schema> AnnotationValue for LogicError<'schema> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LogicErrorKind {
     AllOfMissing,
     AnyOfMissing,
@@ -31,7 +31,7 @@ pub enum LogicErrorKind {
     NotIs,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LogicApplier<'schema> {
     AllOf(Vec<JsonSchema<'schema>>),
     AnyOf(Vec<JsonSchema<'schema>>),
@@ -135,21 +135,6 @@ impl<'me> JsonSchemaValidator for LogicApplier<'me> {
 #[derive(Debug, Clone)]
 pub enum LogicValidationError<'schema> {
     SchemaArrayEmpty(LogicApplier<'schema>),
-}
-
-impl<'schema> LogicApplier<'schema> {
-    /// Check if this applier itself is valid
-    pub fn is_valid(&self) -> Result<(), LogicValidationError> {
-        match self {
-            LogicApplier::AllOf(data) | LogicApplier::AnyOf(data) | LogicApplier::OneOf(data) => {
-                if data.is_empty() {
-                    return Err(LogicValidationError::SchemaArrayEmpty(self.clone()));
-                }
-            }
-            LogicApplier::Not(_) => {}
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]

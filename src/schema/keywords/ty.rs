@@ -1,19 +1,14 @@
+use std::str::FromStr;
+
 use crate::{
     json::{Json, Key},
     schema::{Annotation, JsonSchemaValidator},
 };
 
-#[derive(Debug, Clone)]
-pub enum TypeErrorKind {
-    TypeMismatch { expected: Type },
-    NotInteger,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
     pub key: Key,
-    pub error: TypeErrorKind,
-    pub actual: Type,
+    pub actual: PrimitiveType,
 }
 
 impl<'schema> Into<Annotation<'schema>> for TypeError {
@@ -23,7 +18,7 @@ impl<'schema> Into<Annotation<'schema>> for TypeError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Type {
+pub enum PrimitiveType {
     String,
     Number,
     Integer,
@@ -33,7 +28,7 @@ pub enum Type {
     Null,
 }
 
-impl From<&Json> for Type {
+impl From<&Json> for PrimitiveType {
     fn from(input: &Json) -> Self {
         match input {
             Json::Object(_) => Self::Object,
@@ -46,6 +41,35 @@ impl From<&Json> for Type {
     }
 }
 
+impl FromStr for PrimitiveType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let me = match s {
+            "null" => Self::Null,
+            "boolean" => Self::Boolean,
+            "object" => Self::Object,
+            "array" => Self::Array,
+            "number" => Self::Number,
+            "string" => Self::String,
+            "integer" => Self::Integer,
+            _ => return Err(s.to_string()),
+        };
+        Ok(me)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Type {
+    types: Vec<PrimitiveType>,
+}
+
+impl From<PrimitiveType> for Type {
+    fn from(other: PrimitiveType) -> Self {
+        Self { types: vec![other] }
+    }
+}
+
 impl JsonSchemaValidator for Type {
     fn validate_json<'schema>(
         &'schema self,
@@ -53,25 +77,18 @@ impl JsonSchemaValidator for Type {
         input: &Json,
         annotations: &mut Vec<Annotation<'schema>>,
     ) -> bool {
-        let error_kind = if let (Type::Integer, Json::Number { fraction, .. }) = (self, input) {
-            if fraction.1 == 0 {
-                None
-            } else {
-                Some(TypeErrorKind::NotInteger)
+        let mut found = false;
+        for ty in &self.types {
+            if ty == &PrimitiveType::from(input) {
+                found = true;
+                break;
             }
-        } else if self != &input.into() {
-            Some(TypeErrorKind::TypeMismatch {
-                expected: self.clone(),
-            })
-        } else {
-            None
-        };
+        }
 
-        if let Some(type_error) = error_kind {
+        if !found {
             annotations.push(
                 TypeError {
                     key: key_to_input.copy_of(),
-                    error: type_error,
                     actual: input.into(),
                 }
                 .into(),
@@ -80,5 +97,11 @@ impl JsonSchemaValidator for Type {
         } else {
             true
         }
+    }
+}
+
+impl Type {
+    pub fn new(types: Vec<PrimitiveType>) -> Self {
+        Self { types }
     }
 }

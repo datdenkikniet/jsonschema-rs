@@ -3,7 +3,7 @@ use crate::{
     schema::{Annotation, JsonSchemaValidator},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EnumError {
     pub key: Key,
 }
@@ -14,12 +14,13 @@ impl<'schema> Into<Annotation<'schema>> for EnumError {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Enum {
-    allowed_values: Vec<Json>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Enum<'schema> {
+    allowed_values: Vec<&'schema Json>,
 }
 
-impl JsonSchemaValidator for Enum {
+impl<'me> JsonSchemaValidator for Enum<'me> {
+
     fn validate_json<'schema>(
         &'schema self,
         key_to_input: Key,
@@ -29,7 +30,7 @@ impl JsonSchemaValidator for Enum {
         let success = self
             .allowed_values
             .iter()
-            .find(|val| val == &input)
+            .find(|val| val == &&input)
             .is_some();
         if !success {
             annotations.push(
@@ -43,10 +44,20 @@ impl JsonSchemaValidator for Enum {
     }
 }
 
+impl<'schema> Enum<'schema> {
+    pub fn new(values: Vec<&'schema Json>) -> Self {
+        Self {
+            allowed_values: values,
+        }
+    }
+}
+
 #[test]
 fn test() {
+    let a = "a".into();
+    let b = "b".into();
     let enum_vals = Enum {
-        allowed_values: vec!["a".into(), "b".into()],
+        allowed_values: vec![&a, &b],
     };
 
     let correct_value = "a".into();

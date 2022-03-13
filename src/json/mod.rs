@@ -6,13 +6,13 @@ pub use parser::Parser;
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum KeyPart {
     Identifier(String),
     Index(usize),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Key {
     depth: usize,
     parts: Vec<KeyPart>,
@@ -75,8 +75,14 @@ impl Key {
     }
 
     #[must_use]
-    pub fn push(mut self, part: KeyPart) -> Self {
-        self.parts.push(part);
+    pub fn push_str(mut self, string: &str) -> Self {
+        self.parts.push(KeyPart::Identifier(string.to_string()));
+        self
+    }
+
+    #[must_use]
+    pub fn push_idx(mut self, index: usize) -> Self {
+        self.parts.push(KeyPart::Index(index));
         self
     }
 
