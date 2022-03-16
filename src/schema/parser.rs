@@ -105,6 +105,7 @@ impl Parser {
     ) -> Result<JsonSchema, SchemaParseError> {
         let vocabulary = Self::parse_vocabulary(key.copy_of(), object.iter())?;
         let defs = Self::parse_defs(key.copy_of(), object)?;
+        let id = Self::parse_id(key.copy_of(), object)?;
         let (other_schemas, unknowns) = Self::parse_root_schemas(
             key,
             object
@@ -113,7 +114,7 @@ impl Parser {
         )?;
 
         Ok(JsonSchema::new(
-            None,
+            id,
             vocabulary,
             defs,
             other_schemas,
@@ -344,6 +345,29 @@ impl Parser {
     fn parse_contains(key: Key, input: &Json) -> Result<RootSchema, SchemaParseError> {
         let schema = Self::parse_json_schema_rec(key, input)?;
         Ok(RootSchema::Contains(Contains::new(schema)))
+    }
+
+    fn parse_id(key: Key, input: &HashMap<String, Json>) -> Result<Option<Uri>, SchemaParseError> {
+        let key = key.push_str("$id");
+        let string = match input.get("$id") {
+            Some(Json::String(id)) => id,
+            None => return Ok(None),
+            _ => {
+                return SchemaParseError {
+                    key: key.copy_of().push_str("$id"),
+                    kind: SchemaParseErrorKind::InvalidType,
+                }
+                .into()
+            }
+        };
+        match Uri::from_str(string) {
+            Ok(val) => Ok(Some(val)),
+            Err(e) => SchemaParseError {
+                key,
+                kind: SchemaParseErrorKind::InvalidUri(e),
+            }
+            .into(),
+        }
     }
 }
 

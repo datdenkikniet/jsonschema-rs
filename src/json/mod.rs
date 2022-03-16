@@ -115,26 +115,6 @@ impl From<&str> for Json {
 }
 
 impl Json {
-    pub fn get(&self, key: &mut Key) -> Option<&Self> {
-        let first_part = key.first_part();
-
-        let object = match (self, first_part) {
-            (Json::Object(obj), KeyPart::Identifier(key)) => obj.get(key),
-            (Json::Array(arr), KeyPart::Index(idx)) => arr.get(*idx),
-            _ => None,
-        };
-
-        if key.descend() {
-            if let Some(object) = object {
-                object.get(key)
-            } else {
-                None
-            }
-        } else {
-            object
-        }
-    }
-
     pub fn to_string(&self) -> String {
         let mut string = String::new();
 

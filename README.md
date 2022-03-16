@@ -2,7 +2,7 @@
 The following features from draft 2020-12 should be added:
 - [x] JSON tokenization & parsing
 - [ ] JSON schema parsing from JSON
-    - [ ] `$id`
+    - [x] `$id`
     - [x] `$vocabulary`
     - [ ] `$ref`
     - [x] `$defs`
@@ -22,6 +22,6 @@ The following features from draft 2020-12 should be added:
     - [x] `type`
     - [ ] `const`
     - [ ] `multipleOf`, `maximum`, `exclusiveMaximum`, `minimum`, `inclusiveMinimum`
-    - [ ]  `maxLength`, `minLength`, `pattern`
-    - [ ]  `maxItems`, `minItems`, `uniqueItems`, `maxContains`, `minContains`
-    - [ ]  `maxProperties`, `minProperties`, `required`, `dependentRequired`
+    - [ ] `maxLength`, `minLength`, `pattern`
+    - [ ] `maxItems`, `minItems`, `uniqueItems`, `maxContains`, `minContains`
+    - [ ] `maxProperties`, `minProperties`, `required`, `dependentRequired`
